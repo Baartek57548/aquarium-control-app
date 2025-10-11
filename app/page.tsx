@@ -42,15 +42,15 @@ export default function AquariumControlApp() {
                     <Waves className="h-8 w-8 text-white" />
                   </div>
                   <div>
-                    <h1 className="text-3xl font-bold text-white">Aquarium Control</h1>
+                    <h1 className="text-3xl font-bold text-white">Sterowanie Akwarium</h1>
                     <p className="text-cyan-300 flex items-center gap-2 mt-1">
                       <Droplets className="h-4 w-4" />
-                      Advanced monitoring system
+                      Zaawansowany system monitoringu
                     </p>
                   </div>
                 </div>
                 <div className="hidden md:block text-right">
-                  <p className="text-sm text-gray-400">Current Time</p>
+                  <p className="text-sm text-gray-400">Aktualny czas</p>
                   <p className="text-white font-semibold">{new Date().toLocaleTimeString("pl-PL")}</p>
                 </div>
               </div>
@@ -62,19 +62,17 @@ export default function AquariumControlApp() {
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            {/* Left Column - Temperature */}
             <div className="xl:col-span-2">
               <TemperatureMonitor currentTemp={status.temperature ?? 0} />
             </div>
 
-            {/* Right Column - Quick Status */}
             <div className="glass-card rounded-2xl p-6">
-              <h3 className="font-semibold text-white mb-4 text-lg">Quick Status</h3>
+              <h3 className="font-semibold text-white mb-4 text-lg">Szybki Status</h3>
               <div className="space-y-3">
-                <StatusBadge label="Light" active={status.lightOn} color="yellow" />
-                <StatusBadge label="Filter" active={status.pumpOn} color="blue" />
-                <StatusBadge label="Heater" active={status.heaterOn} color="red" />
-                <StatusBadge label="Quiet Mode" active={status.quietMode} color="purple" />
+                <StatusBadge label="Światło" active={status.lightOn} color="yellow" />
+                <StatusBadge label="Filtr" active={status.pumpOn} color="blue" />
+                <StatusBadge label="Grzałka" active={status.heaterOn} color="red" />
+                <StatusBadge label="Tryb Cichy" active={status.quietMode} color="purple" />
               </div>
             </div>
           </div>

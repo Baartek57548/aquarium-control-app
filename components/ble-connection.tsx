@@ -24,11 +24,10 @@ export function BLEConnection({ onConnectionChange }: BLEConnectionProps) {
       setIsConnected(true)
       onConnectionChange(ble)
 
-      // Sync time on connection
       await ble.syncTime()
       await ble.requestStatus()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Connection failed")
+      setError(err instanceof Error ? err.message : "Błąd połączenia")
       setIsConnected(false)
       onConnectionChange(null)
     } finally {
@@ -61,16 +60,16 @@ export function BLEConnection({ onConnectionChange }: BLEConnectionProps) {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-white text-lg">{isConnected ? "Connected" : "Disconnected"}</h3>
+              <h3 className="font-bold text-white text-lg">{isConnected ? "Połączono" : "Rozłączono"}</h3>
               {isConnected && (
                 <div className="flex items-center gap-1 px-2 py-1 bg-green-500/20 rounded-full">
                   <Wifi className="h-3 w-3 text-green-400" />
-                  <span className="text-xs text-green-400 font-medium">Live</span>
+                  <span className="text-xs text-green-400 font-medium">Na żywo</span>
                 </div>
               )}
             </div>
             <p className="text-sm text-gray-400 mt-1">
-              {isConnected ? "Aquarium Controller" : "Tap to connect to your device"}
+              {isConnected ? "Kontroler Akwarium" : "Dotknij aby połączyć z urządzeniem"}
             </p>
           </div>
         </div>
@@ -82,7 +81,7 @@ export function BLEConnection({ onConnectionChange }: BLEConnectionProps) {
             size="lg"
             className="border-red-500/50 text-red-400 hover:bg-red-500/20 hover:text-red-300 bg-transparent hover:border-red-500"
           >
-            Disconnect
+            Rozłącz
           </Button>
         ) : (
           <Button
@@ -92,7 +91,7 @@ export function BLEConnection({ onConnectionChange }: BLEConnectionProps) {
             className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:from-cyan-600 hover:to-blue-700 shadow-lg shadow-cyan-500/30"
           >
             <Bluetooth className="mr-2 h-5 w-5" />
-            {isConnecting ? "Connecting..." : "Connect Device"}
+            {isConnecting ? "Łączenie..." : "Połącz Urządzenie"}
           </Button>
         )}
       </div>

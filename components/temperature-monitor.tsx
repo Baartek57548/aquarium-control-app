@@ -19,7 +19,6 @@ export function TemperatureMonitor({ currentTemp }: TemperatureMonitorProps) {
 
       setHistory((prev) => {
         const newHistory = [...prev, { time: timeStr, temp: currentTemp }]
-        // Keep last 20 readings
         return newHistory.slice(-20)
       })
     }
@@ -39,15 +38,15 @@ export function TemperatureMonitor({ currentTemp }: TemperatureMonitorProps) {
             <Thermometer className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h3 className="font-semibold text-foreground">Temperature</h3>
-            <p className="text-sm text-muted-foreground">Real-time monitoring</p>
+            <h3 className="font-semibold text-foreground">Temperatura</h3>
+            <p className="text-sm text-muted-foreground">Monitoring w czasie rzeczywistym</p>
           </div>
         </div>
         <div className="text-right">
           <div className={`text-3xl font-bold ${getTempColor(currentTemp)}`}>
             {currentTemp > 0 ? `${currentTemp.toFixed(1)}°C` : "--°C"}
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Optimal: 24-26°C</p>
+          <p className="text-xs text-muted-foreground mt-1">Optymalna: 24-26°C</p>
         </div>
       </div>
 
