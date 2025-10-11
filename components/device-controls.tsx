@@ -1,6 +1,5 @@
 "use client"
 
-import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
@@ -83,121 +82,145 @@ export function DeviceControls({
     label,
     checked,
     onCheckedChange,
-    color,
+    gradient,
   }: {
     icon: any
     label: string
     checked: boolean
     onCheckedChange: (checked: boolean) => void
-    color: string
+    gradient: string
   }) => (
-    <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg">
-      <div className="flex items-center gap-3">
-        <div className={`p-2 rounded-lg ${checked ? color : "bg-muted"}`}>
-          <Icon className={`h-5 w-5 ${checked ? "text-white" : "text-muted-foreground"}`} />
+    <div
+      className={`flex items-center justify-between p-5 rounded-xl transition-all ${
+        checked ? "glass-card-light" : "bg-gray-900/30"
+      } border ${checked ? "border-white/10" : "border-gray-800"}`}
+    >
+      <div className="flex items-center gap-4">
+        <div className={`p-3 rounded-xl transition-all ${checked ? gradient : "bg-gray-800"}`}>
+          <Icon className={`h-6 w-6 ${checked ? "text-white" : "text-gray-500"}`} />
         </div>
-        <Label htmlFor={label} className="text-foreground font-medium cursor-pointer">
+        <Label
+          htmlFor={label}
+          className={`font-semibold cursor-pointer text-base ${checked ? "text-white" : "text-gray-400"}`}
+        >
           {label}
         </Label>
       </div>
-      <Switch id={label} checked={checked} onCheckedChange={onCheckedChange} disabled={!ble} />
+      <Switch id={label} checked={checked} onCheckedChange={onCheckedChange} disabled={!ble} className="scale-110" />
     </div>
   )
 
   return (
     <div className="space-y-4">
-      <Card className="p-6 bg-card border-border">
-        <h3 className="font-semibold text-foreground mb-4">Device Controls</h3>
+      <div className="glass-card rounded-2xl p-6">
+        <h3 className="font-bold text-white mb-5 text-lg">Device Controls</h3>
         <div className="space-y-3">
           <ControlItem
             icon={Lightbulb}
-            label="Light"
+            label="Lighting"
             checked={lightOn}
             onCheckedChange={(v) => handleToggle("light", v)}
-            color="bg-yellow-500"
+            gradient="bg-gradient-to-br from-yellow-500 to-orange-500 shadow-lg shadow-yellow-500/30"
           />
           <ControlItem
             icon={Waves}
-            label="Filter/Pump"
+            label="Filter & Pump"
             checked={pumpOn}
             onCheckedChange={(v) => handleToggle("pump", v)}
-            color="bg-blue-500"
+            gradient="bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg shadow-blue-500/30"
           />
           <ControlItem
             icon={Flame}
-            label="Heater"
+            label="Water Heater"
             checked={heaterOn}
             onCheckedChange={(v) => handleToggle("heater", v)}
-            color="bg-red-500"
+            gradient="bg-gradient-to-br from-red-500 to-pink-500 shadow-lg shadow-red-500/30"
           />
           <ControlItem
             icon={Fish}
-            label="Feeder"
+            label="Auto Feeder"
             checked={feederOn}
             onCheckedChange={(v) => handleToggle("feeder", v)}
-            color="bg-green-500"
+            gradient="bg-gradient-to-br from-green-500 to-emerald-500 shadow-lg shadow-green-500/30"
           />
         </div>
-      </Card>
+      </div>
 
-      <Card className="p-6 bg-card border-border">
-        <div className="flex items-center justify-between mb-4">
+      <div className="glass-card rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Wind className="h-5 w-5 text-primary" />
+            <div className="p-3 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl shadow-lg shadow-cyan-500/30">
+              <Wind className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h3 className="font-semibold text-foreground">Aeration (Servo)</h3>
-              <p className="text-sm text-muted-foreground">Position: {localServo}°</p>
+              <h3 className="font-bold text-white">Air Pump Control</h3>
+              <p className="text-sm text-cyan-300">Servo Position: {localServo}°</p>
             </div>
           </div>
         </div>
-        <Slider
-          value={[localServo]}
-          onValueChange={handleServoChange}
-          onValueCommit={handleServoCommit}
-          min={0}
-          max={180}
-          step={1}
-          disabled={!ble}
-          className="mb-2"
-        />
-        <div className="flex justify-between text-xs text-muted-foreground">
-          <span>0°</span>
-          <span>90°</span>
-          <span>180°</span>
+        <div className="bg-gray-900/50 rounded-xl p-4">
+          <Slider
+            value={[localServo]}
+            onValueChange={handleServoChange}
+            onValueCommit={handleServoCommit}
+            min={0}
+            max={180}
+            step={1}
+            disabled={!ble}
+            className="mb-3"
+          />
+          <div className="flex justify-between text-xs text-gray-400 font-medium">
+            <span>Min (0°)</span>
+            <span>Mid (90°)</span>
+            <span>Max (180°)</span>
+          </div>
         </div>
-      </Card>
+      </div>
 
-      <Card className="p-6 bg-card border-border">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg">
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg ${quietMode ? "bg-purple-500" : "bg-muted"}`}>
-                {quietMode ? (
-                  <VolumeX className="h-5 w-5 text-white" />
-                ) : (
-                  <Volume2 className="h-5 w-5 text-muted-foreground" />
-                )}
+      <div className="glass-card rounded-2xl p-6">
+        <h3 className="font-bold text-white mb-4 text-lg">Quick Actions</h3>
+        <div className="space-y-3">
+          <div
+            className={`flex items-center justify-between p-5 rounded-xl transition-all ${
+              quietMode ? "glass-card-light border-purple-500/30" : "bg-gray-900/30 border-gray-800"
+            } border`}
+          >
+            <div className="flex items-center gap-4">
+              <div
+                className={`p-3 rounded-xl transition-all ${
+                  quietMode
+                    ? "bg-gradient-to-br from-purple-500 to-violet-600 shadow-lg shadow-purple-500/30"
+                    : "bg-gray-800"
+                }`}
+              >
+                {quietMode ? <VolumeX className="h-6 w-6 text-white" /> : <Volume2 className="h-6 w-6 text-gray-500" />}
               </div>
-              <Label htmlFor="quiet" className="text-foreground font-medium cursor-pointer">
+              <Label
+                htmlFor="quiet"
+                className={`font-semibold cursor-pointer text-base ${quietMode ? "text-white" : "text-gray-400"}`}
+              >
                 Quiet Mode
               </Label>
             </div>
-            <Switch id="quiet" checked={quietMode} onCheckedChange={(v) => handleToggle("quiet", v)} disabled={!ble} />
+            <Switch
+              id="quiet"
+              checked={quietMode}
+              onCheckedChange={(v) => handleToggle("quiet", v)}
+              disabled={!ble}
+              className="scale-110"
+            />
           </div>
 
           <Button
             onClick={handleFeedNow}
             disabled={!ble}
-            className="w-full bg-green-600 hover:bg-green-700 text-white"
-            size="lg"
+            className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-lg shadow-green-500/30 h-14 text-base font-semibold"
           >
-            <Fish className="mr-2 h-5 w-5" />
-            Feed Now
+            <Fish className="mr-2 h-6 w-6" />
+            Feed Fish Now
           </Button>
         </div>
-      </Card>
+      </div>
     </div>
   )
 }
