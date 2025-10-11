@@ -53,27 +53,31 @@ export function ScheduleManager({ ble }: ScheduleManagerProps) {
   const handleAddLightSchedule = async () => {
     if (!ble) return
 
-    const onEntry: ScheduleEntry = {
-      id: lightSchedules.length,
-      hour: newLightSchedule.onHour,
-      minute: newLightSchedule.onMinute,
-      lightOn: true,
-      pumpOn: false,
-      heaterOn: false,
-    }
-
-    const offEntry: ScheduleEntry = {
-      id: lightSchedules.length + 1,
-      hour: newLightSchedule.offHour,
-      minute: newLightSchedule.offMinute,
-      lightOn: false,
-      pumpOn: false,
-      heaterOn: false,
-    }
-
     try {
-      await ble.setSchedule(onEntry)
-      await ble.setSchedule(offEntry)
+      await ble.setLightSchedule(
+        newLightSchedule.onHour,
+        newLightSchedule.onMinute,
+        newLightSchedule.offHour,
+        newLightSchedule.offMinute,
+      )
+
+      // Add to local state for display
+      const onEntry: ScheduleEntry = {
+        id: lightSchedules.length,
+        hour: newLightSchedule.onHour,
+        minute: newLightSchedule.onMinute,
+        lightOn: true,
+        pumpOn: false,
+        heaterOn: false,
+      }
+      const offEntry: ScheduleEntry = {
+        id: lightSchedules.length + 1,
+        hour: newLightSchedule.offHour,
+        minute: newLightSchedule.offMinute,
+        lightOn: false,
+        pumpOn: false,
+        heaterOn: false,
+      }
       setLightSchedules([...lightSchedules, onEntry, offEntry])
     } catch (error) {
       console.error("[v0] Light schedule add error:", error)
@@ -83,27 +87,31 @@ export function ScheduleManager({ ble }: ScheduleManagerProps) {
   const handleAddFilterSchedule = async () => {
     if (!ble) return
 
-    const onEntry: ScheduleEntry = {
-      id: filterSchedules.length + 100,
-      hour: newFilterSchedule.onHour,
-      minute: newFilterSchedule.onMinute,
-      lightOn: false,
-      pumpOn: true,
-      heaterOn: false,
-    }
-
-    const offEntry: ScheduleEntry = {
-      id: filterSchedules.length + 101,
-      hour: newFilterSchedule.offHour,
-      minute: newFilterSchedule.offMinute,
-      lightOn: false,
-      pumpOn: false,
-      heaterOn: false,
-    }
-
     try {
-      await ble.setSchedule(onEntry)
-      await ble.setSchedule(offEntry)
+      await ble.setFilterSchedule(
+        newFilterSchedule.onHour,
+        newFilterSchedule.onMinute,
+        newFilterSchedule.offHour,
+        newFilterSchedule.offMinute,
+      )
+
+      // Add to local state for display
+      const onEntry: ScheduleEntry = {
+        id: filterSchedules.length + 100,
+        hour: newFilterSchedule.onHour,
+        minute: newFilterSchedule.onMinute,
+        lightOn: false,
+        pumpOn: true,
+        heaterOn: false,
+      }
+      const offEntry: ScheduleEntry = {
+        id: filterSchedules.length + 101,
+        hour: newFilterSchedule.offHour,
+        minute: newFilterSchedule.offMinute,
+        lightOn: false,
+        pumpOn: false,
+        heaterOn: false,
+      }
       setFilterSchedules([...filterSchedules, onEntry, offEntry])
     } catch (error) {
       console.error("[v0] Filter schedule add error:", error)
@@ -133,17 +141,18 @@ export function ScheduleManager({ ble }: ScheduleManagerProps) {
   const handleAddFeederSchedule = async () => {
     if (!ble) return
 
-    const entry: ScheduleEntry = {
-      id: feederSchedules.length + 200,
-      hour: newFeederSchedule.hour,
-      minute: newFeederSchedule.minute,
-      lightOn: false,
-      pumpOn: false,
-      heaterOn: false,
-    }
-
     try {
-      await ble.setSchedule(entry)
+      await ble.setFeederSchedule(newFeederSchedule.hour, newFeederSchedule.minute)
+
+      // Add to local state for display
+      const entry: ScheduleEntry = {
+        id: feederSchedules.length + 200,
+        hour: newFeederSchedule.hour,
+        minute: newFeederSchedule.minute,
+        lightOn: false,
+        pumpOn: false,
+        heaterOn: false,
+      }
       setFeederSchedules([...feederSchedules, entry])
     } catch (error) {
       console.error("[v0] Feeder schedule add error:", error)
