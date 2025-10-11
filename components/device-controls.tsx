@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Lightbulb, Waves, Flame, Fish, Wind, Volume2, VolumeX } from "lucide-react"
 import type { AquariumBLE } from "@/lib/bluetooth"
 import { useState } from "react"
+import { FeedAnimation, QuietModeAnimation, DeviceToggleAnimation, BubbleAnimation } from "./animations"
 
 interface DeviceControlsProps {
   ble: AquariumBLE | null
@@ -31,8 +32,23 @@ export function DeviceControls({
   const [localServo, setLocalServo] = useState(servoPosition)
   const [quietDuration, setQuietDuration] = useState<string>("30")
 
+  const [showFeedAnimation, setShowFeedAnimation] = useState(false)
+  const [showQuietAnimation, setShowQuietAnimation] = useState(false)
+  const [showDeviceAnimation, setShowDeviceAnimation] = useState<"yellow" | "blue" | "red" | null>(null)
+  const [showBubbleAnimation, setShowBubbleAnimation] = useState(false)
+
   const handleToggle = async (device: string, value: boolean) => {
     if (!ble) return
+
+    if (device === "light" && value) {
+      setShowDeviceAnimation("yellow")
+    } else if (device === "pump" && value) {
+      setShowDeviceAnimation("blue")
+    } else if (device === "heater" && value) {
+      setShowDeviceAnimation("red")
+    } else if (device === "quiet" && value) {
+      setShowQuietAnimation(true)
+    }
 
     try {
       switch (device) {
@@ -50,6 +66,7 @@ export function DeviceControls({
           break
         case "quiet":
           await ble.setQuietMode(value, value ? Number.parseInt(quietDuration) : 0)
+          if (!value) setShowQuietAnimation(false)
           break
       }
     } catch (error) {
@@ -59,12 +76,14 @@ export function DeviceControls({
 
   const handleServoChange = async (value: number[]) => {
     setLocalServo(value[0])
+    setShowBubbleAnimation(true)
   }
 
   const handleServoCommit = async () => {
     if (!ble) return
     try {
       await ble.setServo(localServo)
+      setTimeout(() => setShowBubbleAnimation(false), 3000)
     } catch (error) {
       console.error("[v0] Servo error:", error)
     }
@@ -72,6 +91,7 @@ export function DeviceControls({
 
   const handleFeedNow = async () => {
     if (!ble) return
+    setShowFeedAnimation(true)
     try {
       await ble.feedNow()
     } catch (error) {
@@ -114,6 +134,15 @@ export function DeviceControls({
 
   return (
     <div className="space-y-4">
+      <FeedAnimation show={showFeedAnimation} onComplete={() => setShowFeedAnimation(false)} />
+      <QuietModeAnimation show={showQuietAnimation} />
+      <DeviceToggleAnimation
+        show={showDeviceAnimation !== null}
+        color={showDeviceAnimation || "yellow"}
+        onComplete={() => setShowDeviceAnimation(null)}
+      />
+      <BubbleAnimation show={showBubbleAnimation} />
+
       <div className="glass-card rounded-2xl p-6">
         <h3 className="font-bold text-white mb-4 text-lg">Szybkie Akcje</h3>
         <div className="space-y-3">

@@ -42,16 +42,18 @@ export default function AquariumControlApp() {
                     <Waves className="h-8 w-8 text-white" />
                   </div>
                   <div>
-                    <h1 className="text-3xl font-bold text-white">Sterowanie Akwarium</h1>
+                    <h1 className="text-3xl font-bold text-white">Sterownik Akwarium</h1>
                     <p className="text-cyan-300 flex items-center gap-2 mt-1">
                       <Droplets className="h-4 w-4" />
-                      Zaawansowany system monitoringu
+                      Bartosz Wolny
                     </p>
                   </div>
                 </div>
                 <div className="hidden md:block text-right">
                   <p className="text-sm text-gray-400">Aktualny czas</p>
-                  <p className="text-white font-semibold">{new Date().toLocaleTimeString("pl-PL")}</p>
+                  <p className="text-white font-semibold">
+                    {new Date().toLocaleDateString("pl-PL")} {new Date().toLocaleTimeString("pl-PL")}
+                  </p>
                 </div>
               </div>
             </div>
@@ -67,7 +69,7 @@ export default function AquariumControlApp() {
             </div>
 
             <div className="glass-card rounded-2xl p-6">
-              <h3 className="font-semibold text-white mb-4 text-lg">Szybki Status</h3>
+              <h3 className="font-semibold text-white mb-4 text-lg">Status</h3>
               <div className="space-y-3">
                 <StatusBadge label="Światło" active={status.lightOn} color="yellow" />
                 <StatusBadge label="Filtr" active={status.pumpOn} color="blue" />
