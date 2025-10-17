@@ -79,10 +79,10 @@ unsigned long servoMoveStartTime = 0;
 const unsigned long SERVO_MOVE_TIME = 600;
 bool useCustomServoPosition = false;
 
-const int LIGHT_PIN = 5;
+const int LIGHT_PIN = 9;
 const int PUMP_PIN = 8;
 const int HEATER_PIN = 7;
-const int FEEDER_PIN = 9;
+const int FEEDER_PIN = 5;
 
 const unsigned long FEEDER_PULSE_SEC = 5;
 bool feederActive = false;
@@ -664,20 +664,27 @@ void setup() {
 void loop() {
   DateTime now = rtcPresent ? rtc.now() : DateTime(2000,1,1,0,0,0);
   
-  // Read temperature
+  static float lastNotifiedTemp = NAN;
   if (dsPresent && safeTimeDiff(millis(), lastTempReadTime) >= TEMP_READ_INTERVAL) {
     sensors.requestTemperatures();
     currentTemp = sensors.getTempCByIndex(0);
     lastTempReadTime = millis();
     
-    // Update BLE temperature characteristic
-    if (deviceConnected && !isnan(currentTemp)) {
+    // Update BLE temperature characteristic only if value changed
+    if (deviceConnected && !isnan(currentTemp) && (isnan(lastNotifiedTemp) || abs(currentTemp - lastNotifiedTemp) > 0.1)) {
       pCharTemp->setValue(currentTemp);
       pCharTemp->notify();
+      lastNotifiedTemp = currentTemp;
     }
   }
 
-  // Update BLE device states
+  static uint8_t lastLightState = 255;
+  static uint8_t lastFilterState = 255;
+  static uint8_t lastHeaterState = 255;
+  static uint8_t lastFeederState = 255;
+  static uint8_t lastServoState = 255;
+  static bool lastQuietState = false;
+  
   if (deviceConnected) {
     uint8_t lightState = manualMode.lightOn ? 1 : 0;
     uint8_t filterState = manualMode.pumpOn ? 1 : 0;
@@ -685,24 +692,42 @@ void loop() {
     uint8_t feederState = manualMode.feederOn ? 1 : 0;
     uint8_t servoState = servoPosition;
     
-    pCharLight->setValue(&lightState, 1);
-    pCharLight->notify();
+    if (lightState != lastLightState) {
+      pCharLight->setValue(&lightState, 1);
+      pCharLight->notify();
+      lastLightState = lightState;
+    }
     
-    pCharFilter->setValue(&filterState, 1);
-    pCharFilter->notify();
+    if (filterState != lastFilterState) {
+      pCharFilter->setValue(&filterState, 1);
+      pCharFilter->notify();
+      lastFilterState = filterState;
+    }
     
-    pCharHeater->setValue(&heaterState, 1);
-    pCharHeater->notify();
+    if (heaterState != lastHeaterState) {
+      pCharHeater->setValue(&heaterState, 1);
+      pCharHeater->notify();
+      lastHeaterState = heaterState;
+    }
     
-    pCharFeeder->setValue(&feederState, 1);
-    pCharFeeder->notify();
+    if (feederState != lastFeederState) {
+      pCharFeeder->setValue(&feederState, 1);
+      pCharFeeder->notify();
+      lastFeederState = feederState;
+    }
     
-    pCharServo->setValue(&servoState, 1);
-    pCharServo->notify();
+    if (servoState != lastServoState) {
+      pCharServo->setValue(&servoState, 1);
+      pCharServo->notify();
+      lastServoState = servoState;
+    }
     
-    String quietStatus = quietMode.active ? String(quietMode.durationMinutes) : "0";
-    pCharQuiet->setValue(quietStatus.c_str());
-    pCharQuiet->notify();
+    if (quietMode.active != lastQuietState) {
+      String quietStatus = quietMode.active ? String(quietMode.durationMinutes) : "0";
+      pCharQuiet->setValue(quietStatus.c_str());
+      pCharQuiet->notify();
+      lastQuietState = quietMode.active;
+    }
   }
 
   // Handle BLE connection changes

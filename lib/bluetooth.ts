@@ -234,9 +234,10 @@ export class AquariumBLE {
     const value = target.value
     if (!value) return
 
-    const servoPosition = value.getUint8(0)
-    console.log("[v0] Servo position received:", servoPosition)
-    this.statusCallback?.({ servoPosition })
+    const degrees = value.getUint8(0)
+    const percentage = Math.round((degrees * 100) / 90)
+    console.log("[v0] Servo position received:", degrees, "degrees (", percentage, "%)")
+    this.statusCallback?.({ servoPosition: percentage })
   }
 
   private handleQuietModeNotification(event: Event): void {
@@ -292,14 +293,16 @@ export class AquariumBLE {
     this.statusCallback?.({ feederOn: on })
   }
 
-  async setServo(position: number): Promise<void> {
+  async setServo(percentage: number): Promise<void> {
     if (!this.device?.characteristics) throw new Error("Device not connected")
 
-    const value = new Uint8Array([Math.max(0, Math.min(180, position))])
+    // Convert percentage to degrees: 0-100% maps to 0-90°
+    const degrees = Math.round((percentage * 90) / 100)
+    const value = new Uint8Array([Math.max(0, Math.min(90, degrees))])
     await this.device.characteristics.servo.writeValue(value)
-    console.log("[v0] Servo set to:", position)
+    console.log("[v0] Servo set to:", percentage, "% (", degrees, "degrees)")
 
-    this.statusCallback?.({ servoPosition: position })
+    this.statusCallback?.({ servoPosition: percentage })
   }
 
   async setQuietMode(on: boolean, duration = 30): Promise<void> {

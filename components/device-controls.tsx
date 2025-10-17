@@ -248,7 +248,7 @@ export function DeviceControls({
             </div>
             <div>
               <h3 className="font-bold text-white">Napowietrzanie</h3>
-              <p className="text-sm text-cyan-300">Pozycja Servo: {localServo}°</p>
+              <p className="text-sm text-cyan-300">Intensywność: {localServo}%</p>
             </div>
           </div>
         </div>
@@ -258,15 +258,15 @@ export function DeviceControls({
             onValueChange={handleServoChange}
             onValueCommit={handleServoCommit}
             min={0}
-            max={180}
+            max={100}
             step={1}
             disabled={!ble}
             className="mb-3"
           />
           <div className="flex justify-between text-xs text-gray-400 font-medium">
-            <span>Min (0°)</span>
-            <span>Środek (90°)</span>
-            <span>Max (180°)</span>
+            <span>Min (0%)</span>
+            <span>Środek (50%)</span>
+            <span>Max (100%)</span>
           </div>
         </div>
       </div>
