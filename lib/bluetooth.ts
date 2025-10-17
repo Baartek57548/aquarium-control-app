@@ -90,6 +90,42 @@ export class AquariumBLE {
         this.handleTemperatureNotification(event)
       })
 
+      // Setup light notifications
+      await characteristics.light.startNotifications()
+      characteristics.light.addEventListener("characteristicvaluechanged", (event) => {
+        this.handleLightNotification(event)
+      })
+
+      // Setup filter notifications
+      await characteristics.filter.startNotifications()
+      characteristics.filter.addEventListener("characteristicvaluechanged", (event) => {
+        this.handleFilterNotification(event)
+      })
+
+      // Setup heater notifications
+      await characteristics.heater.startNotifications()
+      characteristics.heater.addEventListener("characteristicvaluechanged", (event) => {
+        this.handleHeaterNotification(event)
+      })
+
+      // Setup feeder notifications
+      await characteristics.feeder.startNotifications()
+      characteristics.feeder.addEventListener("characteristicvaluechanged", (event) => {
+        this.handleFeederNotification(event)
+      })
+
+      // Setup servo notifications
+      await characteristics.servo.startNotifications()
+      characteristics.servo.addEventListener("characteristicvaluechanged", (event) => {
+        this.handleServoNotification(event)
+      })
+
+      // Setup quiet mode notifications
+      await characteristics.quietMode.startNotifications()
+      characteristics.quietMode.addEventListener("characteristicvaluechanged", (event) => {
+        this.handleQuietModeNotification(event)
+      })
+
       this.device = { device, server, characteristics }
 
       // Read initial states
@@ -151,6 +187,68 @@ export class AquariumBLE {
     const temp = value.getFloat32(0, true) // true = little endian
     console.log("[v0] Temperature received:", temp)
     this.statusCallback?.({ temperature: temp })
+  }
+
+  private handleLightNotification(event: Event): void {
+    const target = event.target as BluetoothRemoteGATTCharacteristic
+    const value = target.value
+    if (!value) return
+
+    const lightOn = value.getUint8(0) === 1
+    console.log("[v0] Light status received:", lightOn)
+    this.statusCallback?.({ lightOn })
+  }
+
+  private handleFilterNotification(event: Event): void {
+    const target = event.target as BluetoothRemoteGATTCharacteristic
+    const value = target.value
+    if (!value) return
+
+    const pumpOn = value.getUint8(0) === 1
+    console.log("[v0] Filter status received:", pumpOn)
+    this.statusCallback?.({ pumpOn })
+  }
+
+  private handleHeaterNotification(event: Event): void {
+    const target = event.target as BluetoothRemoteGATTCharacteristic
+    const value = target.value
+    if (!value) return
+
+    const heaterOn = value.getUint8(0) === 1
+    console.log("[v0] Heater status received:", heaterOn)
+    this.statusCallback?.({ heaterOn })
+  }
+
+  private handleFeederNotification(event: Event): void {
+    const target = event.target as BluetoothRemoteGATTCharacteristic
+    const value = target.value
+    if (!value) return
+
+    const feederOn = value.getUint8(0) === 1
+    console.log("[v0] Feeder status received:", feederOn)
+    this.statusCallback?.({ feederOn })
+  }
+
+  private handleServoNotification(event: Event): void {
+    const target = event.target as BluetoothRemoteGATTCharacteristic
+    const value = target.value
+    if (!value) return
+
+    const servoPosition = value.getUint8(0)
+    console.log("[v0] Servo position received:", servoPosition)
+    this.statusCallback?.({ servoPosition })
+  }
+
+  private handleQuietModeNotification(event: Event): void {
+    const target = event.target as BluetoothRemoteGATTCharacteristic
+    const value = target.value
+    if (!value) return
+
+    const decoder = new TextDecoder()
+    const quietStatus = decoder.decode(value.buffer)
+    const quietMode = quietStatus !== "0"
+    console.log("[v0] Quiet mode status received:", quietMode)
+    this.statusCallback?.({ quietMode })
   }
 
   // Device control commands

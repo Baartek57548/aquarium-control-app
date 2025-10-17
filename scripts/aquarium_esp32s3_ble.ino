@@ -543,48 +543,60 @@ void setup() {
               );
   pCharTemp->addDescriptor(new BLE2902());
 
-  // Control characteristics (READ, WRITE)
+  // Control characteristics (READ, WRITE, NOTIFY)
   pCharLight = pService->createCharacteristic(
                  CHAR_UUID_LIGHT,
                  BLECharacteristic::PROPERTY_READ |
-                 BLECharacteristic::PROPERTY_WRITE
+                 BLECharacteristic::PROPERTY_WRITE |
+                 BLECharacteristic::PROPERTY_NOTIFY
                );
   pCharLight->setCallbacks(new LightControlCallbacks());
+  pCharLight->addDescriptor(new BLE2902());
 
   pCharFilter = pService->createCharacteristic(
                   CHAR_UUID_FILTER,
                   BLECharacteristic::PROPERTY_READ |
-                  BLECharacteristic::PROPERTY_WRITE
+                  BLECharacteristic::PROPERTY_WRITE |
+                  BLECharacteristic::PROPERTY_NOTIFY
                 );
   pCharFilter->setCallbacks(new FilterControlCallbacks());
+  pCharFilter->addDescriptor(new BLE2902());
 
   pCharHeater = pService->createCharacteristic(
                   CHAR_UUID_HEATER,
                   BLECharacteristic::PROPERTY_READ |
-                  BLECharacteristic::PROPERTY_WRITE
+                  BLECharacteristic::PROPERTY_WRITE |
+                  BLECharacteristic::PROPERTY_NOTIFY
                 );
   pCharHeater->setCallbacks(new HeaterControlCallbacks());
+  pCharHeater->addDescriptor(new BLE2902());
 
   pCharFeeder = pService->createCharacteristic(
                   CHAR_UUID_FEEDER,
                   BLECharacteristic::PROPERTY_READ |
-                  BLECharacteristic::PROPERTY_WRITE
+                  BLECharacteristic::PROPERTY_WRITE |
+                  BLECharacteristic::PROPERTY_NOTIFY
                 );
   pCharFeeder->setCallbacks(new FeederControlCallbacks());
+  pCharFeeder->addDescriptor(new BLE2902());
 
   pCharServo = pService->createCharacteristic(
                  CHAR_UUID_SERVO,
                  BLECharacteristic::PROPERTY_READ |
-                 BLECharacteristic::PROPERTY_WRITE
+                 BLECharacteristic::PROPERTY_WRITE |
+                 BLECharacteristic::PROPERTY_NOTIFY
                );
   pCharServo->setCallbacks(new ServoControlCallbacks());
+  pCharServo->addDescriptor(new BLE2902());
 
   pCharQuiet = pService->createCharacteristic(
                  CHAR_UUID_QUIET,
                  BLECharacteristic::PROPERTY_READ |
-                 BLECharacteristic::PROPERTY_WRITE
+                 BLECharacteristic::PROPERTY_WRITE |
+                 BLECharacteristic::PROPERTY_NOTIFY
                );
   pCharQuiet->setCallbacks(new QuietModeCallbacks());
+  pCharQuiet->addDescriptor(new BLE2902());
 
   pCharTime = pService->createCharacteristic(
                 CHAR_UUID_TIME,
@@ -674,13 +686,23 @@ void loop() {
     uint8_t servoState = servoPosition;
     
     pCharLight->setValue(&lightState, 1);
+    pCharLight->notify();
+    
     pCharFilter->setValue(&filterState, 1);
+    pCharFilter->notify();
+    
     pCharHeater->setValue(&heaterState, 1);
+    pCharHeater->notify();
+    
     pCharFeeder->setValue(&feederState, 1);
+    pCharFeeder->notify();
+    
     pCharServo->setValue(&servoState, 1);
+    pCharServo->notify();
     
     String quietStatus = quietMode.active ? String(quietMode.durationMinutes) : "0";
     pCharQuiet->setValue(quietStatus.c_str());
+    pCharQuiet->notify();
   }
 
   // Handle BLE connection changes
