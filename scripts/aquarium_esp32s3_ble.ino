@@ -253,7 +253,7 @@ class ServoControlCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
       uint8_t* data = pCharacteristic->getData();
       if (pCharacteristic->getLength() > 0) {
-        servoPosition = constrainValue(data[0], 0, 180);
+        servoPosition = constrainValue(data[0], 0, 90);  // Changed from 0-180 to 0-90
         manualMode.servoOn = true;
         useCustomServoPosition = true;
       }
@@ -520,10 +520,15 @@ void setup() {
     }
   }
 
+  delay(100);
   sensors.begin();
+  delay(100);
   dsPresent = (sensors.getDeviceCount() > 0);
   if (dsPresent) {
     sensors.setWaitForConversion(true);
+    sensors.setResolution(12);  // Set 12-bit resolution for better accuracy
+    sensors.requestTemperatures();
+    currentTemp = sensors.getTempCByIndex(0);
   }
 
   loadFromEEPROM();
