@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { BLEConnection } from "@/components/ble-connection"
 import { TemperatureMonitor } from "@/components/temperature-monitor"
 import { DeviceControls } from "@/components/device-controls"
@@ -9,6 +10,8 @@ import type { AquariumBLE, DeviceStatus } from "@/lib/bluetooth"
 import { Waves, Droplets } from "lucide-react"
 
 export default function AquariumControlApp() {
+  const router = useRouter()
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [ble, setBle] = useState<AquariumBLE | null>(null)
   const [status, setStatus] = useState<Partial<DeviceStatus>>({
     temperature: 0,
@@ -21,12 +24,25 @@ export default function AquariumControlApp() {
   })
 
   useEffect(() => {
+    const auth = localStorage.getItem("aquarium_auth")
+    if (auth === "true") {
+      setIsAuthenticated(true)
+    } else {
+      router.push("/login")
+    }
+  }, [router])
+
+  useEffect(() => {
     if (ble) {
       ble.onStatusUpdate((newStatus) => {
         setStatus((prev) => ({ ...prev, ...newStatus }))
       })
     }
   }, [ble])
+
+  if (!isAuthenticated) {
+    return null
+  }
 
   return (
     <>

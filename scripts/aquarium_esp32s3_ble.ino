@@ -5,12 +5,13 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <ESP32Servo.h>
-#include <EEPROM.h>
-#include <limits.h>
+#include <Preferences.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <ArduinoOTA.h>
+#include <WiFi.h>
 
 // ================= BLE CONFIG =================
 #define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -44,6 +45,13 @@ BLECharacteristic* pCharFeedNow = NULL;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 
+unsigned long bleStartTime = 0;
+const unsigned long BLE_TIMEOUT = 120000; // 2 minutes
+bool bleActive = true;
+bool bleTimeoutReached = false;
+unsigned long buttonHoldStart = 0;
+const unsigned long BUTTON_HOLD_TIME = 3000; // 3 seconds to reactivate BLE
+
 // ================= HARDWARE CONFIG =================
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 32
@@ -54,8 +62,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 RTC_DS1307 rtc;
 
-const int BUTTON1_PIN = 0;  // BOOT button on ESP32-S3
-const int BUTTON2_PIN = 1;  // Additional button
+const int BUTTON_PIN = 0;  // BOOT button on ESP32-S3
+// const int BUTTON2_PIN = 1;  // Additional button - Removed
 
 const unsigned long DEBOUNCE_DELAY = 20;
 const unsigned long INACTIVITY_TIMEOUT = 30000;
@@ -65,7 +73,7 @@ const unsigned long HOLD_T2 = 2000;
 const unsigned long HOLD_T3 = 3000;
 const unsigned long BOTH_BUTTONS_HOLD = 4000;
 
-#define ONE_WIRE_BUS 4
+#define ONE_WIRE_BUS 1
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 float currentTemp = NAN;
@@ -79,10 +87,10 @@ unsigned long servoMoveStartTime = 0;
 const unsigned long SERVO_MOVE_TIME = 600;
 bool useCustomServoPosition = false;
 
-const int LIGHT_PIN = 9;
-const int PUMP_PIN = 8;
-const int HEATER_PIN = 7;
-const int FEEDER_PIN = 5;
+const int LIGHT_PIN = 5;
+const int PUMP_PIN = 4;
+const int HEATER_PIN = 3;
+const int FEEDER_PIN = 2;
 
 const unsigned long FEEDER_PULSE_SEC = 5;
 bool feederActive = false;
@@ -206,6 +214,7 @@ const unsigned long TEMP_READ_INTERVAL = 4000;
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
       deviceConnected = true;
+      bleStartTime = millis(); // Reset BLE timer on connect
     };
 
     void onDisconnect(BLEServer* pServer) {
@@ -218,6 +227,7 @@ class LightControlCallbacks: public BLECharacteristicCallbacks {
       uint8_t* data = pCharacteristic->getData();
       if (pCharacteristic->getLength() > 0) {
         manualMode.lightOn = (data[0] == 1);
+        lastActivityTime = millis();
       }
     }
 };
@@ -227,6 +237,7 @@ class FilterControlCallbacks: public BLECharacteristicCallbacks {
       uint8_t* data = pCharacteristic->getData();
       if (pCharacteristic->getLength() > 0) {
         manualMode.pumpOn = (data[0] == 1);
+        lastActivityTime = millis();
       }
     }
 };
@@ -236,6 +247,7 @@ class HeaterControlCallbacks: public BLECharacteristicCallbacks {
       uint8_t* data = pCharacteristic->getData();
       if (pCharacteristic->getLength() > 0) {
         manualMode.heaterOn = (data[0] == 1);
+        lastActivityTime = millis();
       }
     }
 };
@@ -245,6 +257,7 @@ class FeederControlCallbacks: public BLECharacteristicCallbacks {
       uint8_t* data = pCharacteristic->getData();
       if (pCharacteristic->getLength() > 0) {
         manualMode.feederOn = (data[0] == 1);
+        lastActivityTime = millis();
       }
     }
 };
@@ -256,6 +269,7 @@ class ServoControlCallbacks: public BLECharacteristicCallbacks {
         servoPosition = constrainValue(data[0], 0, 180);
         manualMode.servoOn = true;
         useCustomServoPosition = true;
+        lastActivityTime = millis();
       }
     }
 };
@@ -269,9 +283,11 @@ class QuietModeCallbacks: public BLECharacteristicCallbacks {
           quietMode.active = true;
           quietMode.durationMinutes = duration;
           quietMode.startTime = millis();
+          showQuietModeAnimation();
         } else {
           quietMode.active = false;
         }
+        lastActivityTime = millis();
       }
     }
 };
@@ -289,6 +305,7 @@ class TimeSyncCallbacks: public BLECharacteristicCallbacks {
         int second = value.substring(17, 19).toInt();
         
         rtc.adjust(DateTime(year, month, day, hour, minute, second));
+        lastActivityTime = millis();
       }
     }
 };
@@ -308,6 +325,7 @@ class ScheduleLightCallbacks: public BLECharacteristicCallbacks {
         schedule.lightOffHour = constrainValue(offHour, 0, 23);
         schedule.lightOffMinute = constrainValue(offMinute, 0, 59);
         saveToEEPROM();
+        lastActivityTime = millis();
       }
     }
 };
@@ -327,6 +345,7 @@ class ScheduleFilterCallbacks: public BLECharacteristicCallbacks {
         schedule.pumpOffHour = constrainValue(offHour, 0, 23);
         schedule.pumpOffMinute = constrainValue(offMinute, 0, 59);
         saveToEEPROM();
+        lastActivityTime = millis();
       }
     }
 };
@@ -342,6 +361,7 @@ class ScheduleFeederCallbacks: public BLECharacteristicCallbacks {
         schedule.feederHour = constrainValue(hour, 0, 23);
         schedule.feederMinute = constrainValue(minute, 0, 59);
         saveToEEPROM();
+        lastActivityTime = millis();
       }
     }
 };
@@ -363,6 +383,7 @@ class FeedNowCallbacks: public BLECharacteristicCallbacks {
       }
       feedingMessageActive = true;
       showMsg("Karmienie :D!");
+      lastActivityTime = millis();
     }
 };
 
@@ -493,8 +514,8 @@ void setup() {
   Serial.begin(115200);
   
   Wire.begin();
-  pinMode(BUTTON1_PIN, INPUT_PULLUP);
-  pinMode(BUTTON2_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  // pinMode(BUTTON2_PIN, INPUT_PULLUP); // Removed
   pinMode(LIGHT_PIN, OUTPUT);
   pinMode(PUMP_PIN, OUTPUT);
   pinMode(HEATER_PIN, OUTPUT);
@@ -630,6 +651,15 @@ void setup() {
 
   pService->start();
 
+  // Initialize OTA and WiFi
+  WiFi.mode(WIFI_STA);
+  WiFi.begin("YOUR_WIFI_SSID", "YOUR_WIFI_PASSWORD"); // User should update these
+  
+  ArduinoOTA.setHostname("AquariumController");
+  ArduinoOTA.begin();
+  
+  bleStartTime = millis();
+  
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pAdvertising->setScanResponse(true);
@@ -662,6 +692,29 @@ void setup() {
 
 // ================= MAIN LOOP =================
 void loop() {
+  ArduinoOTA.handle();
+  
+  if (bleActive && !deviceConnected && (millis() - bleStartTime > BLE_TIMEOUT)) {
+    BLEDevice::deinit(true);
+    bleActive = false;
+    bleTimeoutReached = true;
+  }
+  
+  if (!bleActive && digitalRead(BUTTON_PIN) == LOW) {
+    if (buttonHoldStart == 0) {
+      buttonHoldStart = millis();
+    } else if (millis() - buttonHoldStart > BUTTON_HOLD_TIME) {
+      // Reactivate BLE
+      initBLE();
+      bleActive = true;
+      bleStartTime = millis();
+      buttonHoldStart = 0;
+      showBLEAnimation();
+    }
+  } else {
+    buttonHoldStart = 0;
+  }
+
   DateTime now = rtcPresent ? rtc.now() : DateTime(2000,1,1,0,0,0);
   
   static float lastNotifiedTemp = NAN;
@@ -758,54 +811,29 @@ void loop() {
     }
   }
 
+  if (!manualMode.lightOn && !manualMode.pumpOn && !manualMode.heaterOn && 
+      !manualMode.servoOn && !feederActive && !quietMode.active) {
+    // Enter deep sleep after 5 minutes of inactivity
+    if (millis() - lastActivityTime > 300000) {
+      esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0); // Wake on button press
+      esp_deep_sleep_start();
+    }
+  }
+  
   delay(10);
 }
 
 // ================= BUTTON HANDLING =================
 void handleButtons() {
-  int r1 = digitalRead(BUTTON1_PIN);
-  int r2 = digitalRead(BUTTON2_PIN);
+  int r1 = digitalRead(BUTTON_PIN);
+  // int r2 = digitalRead(BUTTON2_PIN); // Removed
   unsigned long t = millis();
 
   // Invert button readings (INPUT_PULLUP means LOW when pressed)
   r1 = !r1;
-  r2 = !r2;
+  // r2 = !r2; // Removed
 
-  if (r1 == HIGH && r2 == HIGH) {
-    if (bothButtonsStart == 0) {
-      bothButtonsStart = t;
-      bothButtonsHandled = false;
-    }
-    if (!bothButtonsHandled && (safeTimeDiff(t, bothButtonsStart) >= BOTH_BUTTONS_HOLD)) {
-      if (currentState == MAIN_SCREEN) {
-        manualMode.lightOn = !manualMode.lightOn;
-        manualMode.pumpOn = !manualMode.pumpOn;
-        manualMode.servoOn = !manualMode.servoOn;
-        manualMode.feederOn = false;
-        useCustomServoPosition = false;
-        currentState = DEVICE_STATUS;
-        statusDisplayTime = t;
-        showMsg("Przelacz");
-      } else {
-        currentState = MAIN_SCREEN;
-        menuIndex = 0;
-        editingValue = false;
-        editingHour = true;
-        showMsg("Glowny");
-      }
-      bothButtonsHandled = true;
-      lastActivityTime = t;
-    }
-    holdStart = 0;
-    resetHoldFlags();
-    lastButton1Raw = r1;
-    lastButton2Raw = r2;
-    return;
-  } else {
-    bothButtonsStart = 0;
-    bothButtonsHandled = false;
-  }
-
+  // Simplified button handling for a single button
   if (r1 != lastButton1Raw) lastDebounce1 = t;
   if (safeTimeDiff(t, lastDebounce1) > DEBOUNCE_DELAY) {
     if (r1 != button1State) {
@@ -815,10 +843,17 @@ void handleButtons() {
         press1Start = t;
         longPress1Handled = false;
         lastActivityTime = t;
+        
+        // If BLE is inactive, start the hold for reactivation
+        if (!bleActive) {
+          buttonHoldStart = t;
+        }
       } else if (prevState == HIGH) {
         if (!longPress1Handled) {
           onNavShort();
         }
+        // Reset hold start if button released
+        buttonHoldStart = 0;
       }
     }
   }
@@ -840,68 +875,6 @@ void handleButtons() {
   }
 
   lastButton1Raw = r1;
-
-  if (r2 != lastButton2Raw) lastDebounce2 = t;
-  if (safeTimeDiff(t, lastDebounce2) > DEBOUNCE_DELAY) {
-    if (r2 != button2State) {
-      int prevState = button2State;
-      button2State = r2;
-      if (button2State == HIGH) {
-        press2Start = t;
-        longPress2Handled = false;
-        lastActivityTime = t;
-        if (currentState != MAIN_SCREEN) {
-          holdStart = t;
-          holdStage = 0;
-          holdActionDone1 = holdActionDone2 = holdActionDone3 = false;
-        }
-      } else if (prevState == HIGH) {
-        if (!longPress2Handled && !holdActionDone2 && !holdActionDone3) {
-          onActionShort();
-        }
-        holdStart = 0;
-        holdStage = 0;
-        holdActionDone1 = holdActionDone2 = holdActionDone3 = false;
-      }
-    }
-  }
-
-  if (button2State == HIGH && currentState == MAIN_SCREEN) {
-    if (!longPress2Handled && (safeTimeDiff(t, press2Start) >= 2000)) {
-      currentState = MAIN_MENU;
-      menuIndex = 0;
-      longPress2Handled = true;
-      lastActivityTime = t;
-      showMsg("Menu");
-    }
-  }
-
-  if (button2State == HIGH && holdStart != 0 && currentState != MAIN_SCREEN) {
-    unsigned long elapsed = safeTimeDiff(t, holdStart);
-    
-    if (editingValue) {
-      if (elapsed >= HOLD_T1 && holdStage < 1) {
-        holdStage = 1;
-        if (!holdActionDone1) { performHoldActionStage1(); holdActionDone1 = true; }
-      }
-      if (elapsed >= HOLD_T2 && holdStage < 2) {
-        holdStage = 2;
-        if (!holdActionDone2) { performHoldActionStage2(); holdActionDone2 = true; }
-      }
-      if (elapsed >= HOLD_T3 && holdStage < 3) {
-        holdStage = 3;
-        if (!holdActionDone3) { performHoldActionStage3(); holdActionDone3 = true; }
-      }
-    } else {
-      if (elapsed >= HOLD_T2 && !holdActionDone2) {
-        goBackOneLevel();
-        holdActionDone2 = true;
-        longPress2Handled = true;
-      }
-    }
-  }
-
-  lastButton2Raw = r2;
 }
 
 // =================NAVIGATION FUNCTIONS =================
@@ -1081,7 +1054,10 @@ void onActionShort() {
     case QUIET_MODE_MENU:
       if (menuIndex == 0) {
         quietMode.active = !quietMode.active;
-        if (quietMode.active) quietMode.startTime = millis();
+        if (quietMode.active) {
+          quietMode.startTime = millis();
+          showQuietModeAnimation();
+        }
         showMsg(quietMode.active ? "Cichy ON" : "Cichy OFF");
       } else if (menuIndex == 1) {
         currentState = QUIET_MODE_DURATION;
@@ -1092,6 +1068,7 @@ void onActionShort() {
       break;
     default: break;
   }
+  lastActivityTime = millis();
 }
 
 // ================= DEVICE UPDATE =================
@@ -1699,4 +1676,95 @@ void goBackOneLevel() {
       break;
   }
   lastActivityTime = millis();
+}
+
+void showBLEAnimation() {
+  display.clearDisplay();
+  for (int i = 0; i < 3; i++) {
+    display.fillCircle(64, 16, 10 - i * 3, SSD1306_WHITE);
+    display.display();
+    delay(200);
+    display.clearDisplay();
+  }
+  display.setCursor(30, 12);
+  display.print(F("BLE AKTYWNY"));
+  display.display();
+  delay(1000);
+}
+
+void showQuietModeAnimation() {
+  display.clearDisplay();
+  for (int wave = 0; wave < 3; wave++) {
+    for (int x = 0; x < SCREEN_WIDTH; x += 4) {
+      int y = 16 + sin((x + wave * 20) * 0.1) * 8;
+      display.drawPixel(x, y, SSD1306_WHITE);
+    }
+    display.display();
+    delay(300);
+    display.clearDisplay();
+  }
+  display.setCursor(20, 12);
+  display.print(F("TRYB CICHY"));
+  display.display();
+  delay(1000);
+}
+
+// Function to reinitialize BLE
+void initBLE() {
+  BLEDevice::init("AquariumController");
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  pCharTemp = pService->createCharacteristic(CHAR_UUID_TEMP, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+  pCharTemp->addDescriptor(new BLE2902());
+
+  pCharLight = pService->createCharacteristic(CHAR_UUID_LIGHT, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);
+  pCharLight->setCallbacks(new LightControlCallbacks());
+  pCharLight->addDescriptor(new BLE2902());
+
+  pCharFilter = pService->createCharacteristic(CHAR_UUID_FILTER, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);
+  pCharFilter->setCallbacks(new FilterControlCallbacks());
+  pCharFilter->addDescriptor(new BLE2902());
+
+  pCharHeater = pService->createCharacteristic(CHAR_UUID_HEATER, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);
+  pCharHeater->setCallbacks(new HeaterControlCallbacks());
+  pCharHeater->addDescriptor(new BLE2902());
+
+  pCharFeeder = pService->createCharacteristic(CHAR_UUID_FEEDER, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);
+  pCharFeeder->setCallbacks(new FeederControlCallbacks());
+  pCharFeeder->addDescriptor(new BLE2902());
+
+  pCharServo = pService->createCharacteristic(CHAR_UUID_SERVO, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);
+  pCharServo->setCallbacks(new ServoControlCallbacks());
+  pCharServo->addDescriptor(new BLE2902());
+
+  pCharQuiet = pService->createCharacteristic(CHAR_UUID_QUIET, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);
+  pCharQuiet->setCallbacks(new QuietModeCallbacks());
+  pCharQuiet->addDescriptor(new BLE2902());
+
+  pCharTime = pService->createCharacteristic(CHAR_UUID_TIME, BLECharacteristic::PROPERTY_WRITE);
+  pCharTime->setCallbacks(new TimeSyncCallbacks());
+
+  pCharSchLight = pService->createCharacteristic(CHAR_UUID_SCH_LIGHT, BLECharacteristic::PROPERTY_WRITE);
+  pCharSchLight->setCallbacks(new ScheduleLightCallbacks());
+
+  pCharSchFilter = pService->createCharacteristic(CHAR_UUID_SCH_FILTER, BLECharacteristic::PROPERTY_WRITE);
+  pCharSchFilter->setCallbacks(new ScheduleFilterCallbacks());
+
+  pCharSchFeeder = pService->createCharacteristic(CHAR_UUID_SCH_FEEDER, BLECharacteristic::PROPERTY_WRITE);
+  pCharSchFeeder->setCallbacks(new ScheduleFeederCallbacks());
+
+  pCharFeedNow = pService->createCharacteristic(CHAR_UUID_FEED_NOW, BLECharacteristic::PROPERTY_WRITE);
+  pCharFeedNow->setCallbacks(new FeedNowCallbacks());
+
+  pService->start();
+
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
 }
