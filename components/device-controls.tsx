@@ -31,6 +31,7 @@ export function DeviceControls({
 }: DeviceControlsProps) {
   const [localServo, setLocalServo] = useState(servoPosition)
   const [quietDuration, setQuietDuration] = useState<string>("30")
+  const [targetTemp, setTargetTemp] = useState(25)
 
   const [showFeedAnimation, setShowFeedAnimation] = useState(false)
   const [showQuietAnimation, setShowQuietAnimation] = useState(false)
@@ -96,6 +97,20 @@ export function DeviceControls({
       await ble.feedNow()
     } catch (error) {
       console.error("[v0] Feed error:", error)
+    }
+  }
+
+  const handleTargetTempChange = async (value: number[]) => {
+    setTargetTemp(value[0])
+  }
+
+  const handleTargetTempCommit = async () => {
+    if (!ble) return
+    try {
+      // TODO: Add BLE method to set target temperature
+      console.log("[v0] Target temperature set to:", targetTemp)
+    } catch (error) {
+      console.error("[v0] Target temp error:", error)
     }
   }
 
@@ -267,6 +282,37 @@ export function DeviceControls({
             <span>Min (0%)</span>
             <span>Środek (50%)</span>
             <span>Max (100%)</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="glass-card rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-gradient-to-br from-red-500 to-orange-600 rounded-xl shadow-lg shadow-red-500/30">
+              <Flame className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white">Temperatura Docelowa</h3>
+              <p className="text-sm text-orange-300">{targetTemp}°C</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-gray-900/50 rounded-xl p-4">
+          <Slider
+            value={[targetTemp]}
+            onValueChange={handleTargetTempChange}
+            onValueCommit={handleTargetTempCommit}
+            min={20}
+            max={30}
+            step={0.5}
+            disabled={!ble}
+            className="mb-3"
+          />
+          <div className="flex justify-between text-xs text-gray-400 font-medium">
+            <span>20°C</span>
+            <span>25°C</span>
+            <span>30°C</span>
           </div>
         </div>
       </div>

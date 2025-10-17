@@ -29,7 +29,7 @@ bool deviceConnected = false;
 
 // ================= HARDWARE CONFIG =================
 #define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
+#define SCREEN_HEIGHT 32  // Changed from 64 to 32 for correct display size
 #define OLED_RESET -1
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -38,11 +38,11 @@ Preferences preferences;
 
 // ESP32-S3 Zero Pin Definitions
 const int BUTTON_PIN = 0;        // Boot button for display wake
-const int ONE_WIRE_BUS = 4;      // Temperature sensor
+const int ONE_WIRE_BUS = 1;      // Temperature sensor
 const int SERVO_PIN = 5;         // Servo for aeration
-const int LIGHT_PIN = 6;         // Light relay
-const int PUMP_PIN = 7;          // Pump/Filter relay
-const int HEATER_PIN = 8;        // Heater relay
+const int LIGHT_PIN = 5;         // Light relay
+const int PUMP_PIN = 8;          // Pump/Filter relay
+const int HEATER_PIN = 7;        // Heater relay
 const int FEEDER_PIN = 9;        // Feeder relay
 
 OneWire oneWire(ONE_WIRE_BUS);
@@ -90,10 +90,32 @@ struct QuietMode {
   unsigned long startTime = 0;
 } quietMode;
 
+struct FeedingAnimation {
+  bool active = false;
+  unsigned long startTime = 0;
+  int frame = 0;
+  struct FoodPellet {
+    int x;
+    int y;
+    bool active;
+  } pellets[5];
+} feedingAnim;
+
 bool rtcPresent = false;
 bool dsPresent = false;
 char statusMessage[32] = "";
 bool isFeedingNow = false;
+
+const unsigned char fishBitmap[] PROGMEM = {
+  0b00000011, 0b11000000,
+  0b00001111, 0b11110000,
+  0b00111111, 0b11111100,
+  0b01111111, 0b11111110,
+  0b01111111, 0b11111110,
+  0b00111111, 0b11111100,
+  0b00001111, 0b11110000,
+  0b00000011, 0b11000000
+};
 
 // ================= BLE CALLBACKS =================
 class ServerCallbacks: public BLEServerCallbacks {
@@ -518,6 +540,16 @@ void triggerFeeding() {
   feederStartMillis = millis();
   digitalWrite(FEEDER_PIN, HIGH);
   strcpy(statusMessage, "Karmienie...");
+  
+  feedingAnim.active = true;
+  feedingAnim.startTime = millis();
+  feedingAnim.frame = 0;
+  for (int i = 0; i < 5; i++) {
+    feedingAnim.pellets[i].x = 20 + i * 20;
+    feedingAnim.pellets[i].y = 0;
+    feedingAnim.pellets[i].active = true;
+  }
+  
   wakeDisplay();
 }
 
@@ -546,47 +578,93 @@ void wakeDisplay() {
   lastDisplayActivity = millis();
 }
 
+void drawFeedingAnimation() {
+  if (!feedingAnim.active) return;
+  
+  unsigned long elapsed = millis() - feedingAnim.startTime;
+  
+  // Animation lasts 5 seconds
+  if (elapsed > 5000) {
+    feedingAnim.active = false;
+    return;
+  }
+  
+  // Clear display for animation
+  display.clearDisplay();
+  
+  // Draw fish at bottom center (swimming left to right)
+  int fishX = 10 + (elapsed / 50) % 40; // Fish moves slowly
+  int fishY = 20;
+  display.drawBitmap(fishX, fishY, fishBitmap, 16, 8, SSD1306_WHITE);
+  
+  // Draw and update food pellets falling
+  for (int i = 0; i < 5; i++) {
+    if (feedingAnim.pellets[i].active) {
+      // Draw pellet (2x2 pixels)
+      display.fillRect(feedingAnim.pellets[i].x, feedingAnim.pellets[i].y, 2, 2, SSD1306_WHITE);
+      
+      // Move pellet down
+      feedingAnim.pellets[i].y += 1;
+      
+      // Check if fish "eats" the pellet
+      if (feedingAnim.pellets[i].y >= fishY - 2 && 
+          feedingAnim.pellets[i].y <= fishY + 8 &&
+          feedingAnim.pellets[i].x >= fishX - 2 &&
+          feedingAnim.pellets[i].x <= fishX + 16) {
+        feedingAnim.pellets[i].active = false;
+        // Draw "eating" effect - small circle
+        display.drawCircle(feedingAnim.pellets[i].x, feedingAnim.pellets[i].y, 3, SSD1306_WHITE);
+      }
+      
+      // Reset pellet if it goes off screen
+      if (feedingAnim.pellets[i].y > SCREEN_HEIGHT) {
+        feedingAnim.pellets[i].y = 0;
+        feedingAnim.pellets[i].x = 20 + i * 20;
+      }
+    }
+  }
+  
+  // Draw "KARMIENIE" text at top
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(30, 0);
+  display.print(F("KARMIENIE"));
+  
+  display.display();
+}
+
 void updateDisplay(DateTime now) {
   if (!displayActive) return;
+  
+  if (feedingAnim.active) {
+    drawFeedingAnimation();
+    return;
+  }
   
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   
-  // Line 1: Time
+  // Line 1: Time and Date
   display.setCursor(0, 0);
-  display.print(F("Czas: "));
-  if (rtcPresent) {
-    if (now.hour() < 10) display.print("0");
-    display.print(now.hour());
-    display.print(":");
-    if (now.minute() < 10) display.print("0");
-    display.print(now.minute());
-    display.print(":");
-    if (now.second() < 10) display.print("0");
-    display.print(now.second());
-  } else {
-    display.print(F("--:--:--"));
-  }
-  
-  // Line 2: Date
-  display.setCursor(0, 12);
-  display.print(F("Data: "));
   if (rtcPresent) {
     if (now.day() < 10) display.print("0");
     display.print(now.day());
     display.print("/");
     if (now.month() < 10) display.print("0");
     display.print(now.month());
-    display.print("/");
-    display.print(now.year());
+    display.print(" ");
+    if (now.hour() < 10) display.print("0");
+    display.print(now.hour());
+    display.print(":");
+    if (now.minute() < 10) display.print("0");
+    display.print(now.minute());
   } else {
-    display.print(F("--/--/----"));
+    display.print(F("--/-- --:--"));
   }
   
-  // Line 3: Temperature
-  display.setCursor(0, 24);
-  display.print(F("Temp: "));
+  // Temperature on same line
+  display.setCursor(80, 0);
   if (!isnan(currentTemp)) {
     display.print(currentTemp, 1);
     display.print((char)247);
@@ -597,8 +675,8 @@ void updateDisplay(DateTime now) {
     display.print("C");
   }
   
-  // Line 4: Device Status
-  display.setCursor(0, 36);
+  // Line 2: Device Status
+  display.setCursor(0, 12);
   display.print(F("Status: "));
   if (digitalRead(LIGHT_PIN)) display.print(F("S"));
   else display.print(F("-"));
@@ -609,11 +687,9 @@ void updateDisplay(DateTime now) {
   if (lastServoPosition == 0) display.print(F("N"));
   else display.print(F("-"));
   
-  // Line 5: Special messages
-  display.setCursor(0, 48);
-  if (isFeedingNow) {
-    display.print(F(">>> KARMIENIE <<<"));
-  } else if (quietMode.active) {
+  // Line 3: Special messages
+  display.setCursor(0, 24);
+  if (quietMode.active) {
     display.print(F("Tryb cichy: "));
     unsigned long remaining = quietMode.durationMinutes - ((millis() - quietMode.startTime) / 60000);
     display.print(remaining);
@@ -622,6 +698,8 @@ void updateDisplay(DateTime now) {
     display.print(statusMessage);
   } else if (deviceConnected) {
     display.print(F("BLE: Polaczony"));
+  } else {
+    display.print(F("BLE: Gotowy"));
   }
   
   display.display();
