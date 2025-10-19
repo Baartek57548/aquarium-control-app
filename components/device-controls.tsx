@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Lightbulb, Waves, Flame, Fish, Wind, Volume2, VolumeX } from "lucide-react"
 import type { AquariumBLE } from "@/lib/bluetooth"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { FeedAnimation, QuietModeAnimation, DeviceToggleAnimation, BubbleAnimation } from "./animations"
 
 interface DeviceControlsProps {
@@ -18,6 +18,7 @@ interface DeviceControlsProps {
   feederOn: boolean
   servoPosition: number
   quietMode: boolean
+  targetTemp?: number
 }
 
 export function DeviceControls({
@@ -28,10 +29,19 @@ export function DeviceControls({
   feederOn,
   servoPosition,
   quietMode,
+  targetTemp: initialTargetTemp = 25,
 }: DeviceControlsProps) {
   const [localServo, setLocalServo] = useState(servoPosition)
   const [quietDuration, setQuietDuration] = useState<string>("30")
-  const [targetTemp, setTargetTemp] = useState(25)
+  const [targetTemp, setTargetTemp] = useState(initialTargetTemp)
+
+  useEffect(() => {
+    setLocalServo(servoPosition)
+  }, [servoPosition])
+
+  useEffect(() => {
+    setTargetTemp(initialTargetTemp)
+  }, [initialTargetTemp])
 
   const [showFeedAnimation, setShowFeedAnimation] = useState(false)
   const [showQuietAnimation, setShowQuietAnimation] = useState(false)
@@ -107,8 +117,7 @@ export function DeviceControls({
   const handleTargetTempCommit = async () => {
     if (!ble) return
     try {
-      // TODO: Add BLE method to set target temperature
-      console.log("[v0] Target temperature set to:", targetTemp)
+      await ble.setTargetTemp(targetTemp)
     } catch (error) {
       console.error("[v0] Target temp error:", error)
     }

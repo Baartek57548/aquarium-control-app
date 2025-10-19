@@ -1,3 +1,21 @@
+/*
+ * IMPORTANT: This code requires the ESP32 BLE library (built-in with ESP32 board package)
+ * 
+ * Arduino IDE Setup:
+ * 1. Board: Tools → Board → ESP32 Arduino → ESP32S3 Dev Module
+ * 2. Remove ArduinoBLE library if installed (it conflicts with ESP32 BLE)
+ * 3. Make sure ESP32 board package is installed (v2.0.0 or higher)
+ * 
+ * Required Libraries (install via Library Manager):
+ * - Adafruit GFX Library
+ * - Adafruit SSD1306
+ * - RTClib
+ * - OneWire
+ * - DallasTemperature
+ * - ESP32Servo
+ */
+
+#include <EEPROM.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -27,6 +45,7 @@
 #define CHAR_UUID_SCH_FILTER "beb5483e-36e1-4688-b7f5-ea07361b26b1"
 #define CHAR_UUID_SCH_FEEDER "beb5483e-36e1-4688-b7f5-ea07361b26b2"
 #define CHAR_UUID_FEED_NOW  "beb5483e-36e1-4688-b7f5-ea07361b26b3"
+#define CHAR_UUID_TARGET_TEMP "beb5483e-36e1-4688-b7f5-ea07361b26b4"
 
 BLEServer* pServer = NULL;
 BLECharacteristic* pCharTemp = NULL;
@@ -41,6 +60,7 @@ BLECharacteristic* pCharSchLight = NULL;
 BLECharacteristic* pCharSchFilter = NULL;
 BLECharacteristic* pCharSchFeeder = NULL;
 BLECharacteristic* pCharFeedNow = NULL;
+BLECharacteristic* pCharTargetTemp = NULL;
 
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
@@ -266,7 +286,7 @@ class ServoControlCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
       uint8_t* data = pCharacteristic->getData();
       if (pCharacteristic->getLength() > 0) {
-        servoPosition = constrainValue(data[0], 0, 180);
+        servoPosition = constrainValue(data[0], 0, 90);
         manualMode.servoOn = true;
         useCustomServoPosition = true;
         lastActivityTime = millis();
@@ -384,6 +404,19 @@ class FeedNowCallbacks: public BLECharacteristicCallbacks {
       feedingMessageActive = true;
       showMsg("Karmienie :D!");
       lastActivityTime = millis();
+    }
+};
+
+class TargetTempCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+      uint8_t* data = pCharacteristic->getData();
+      if (pCharacteristic->getLength() == 4) {
+        float temp;
+        memcpy(&temp, data, 4);
+        schedule.targetTemp = constrainValue((int)temp, 18, 30);
+        saveToEEPROM();
+        lastActivityTime = millis();
+      }
     }
 };
 
@@ -649,14 +682,21 @@ void setup() {
                  );
   pCharFeedNow->setCallbacks(new FeedNowCallbacks());
 
+  pCharTargetTemp = pService->createCharacteristic(
+                      CHAR_UUID_TARGET_TEMP,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+  pCharTargetTemp->setCallbacks(new TargetTempCallbacks());
+  pCharTargetTemp->addDescriptor(new BLE2902());
+
   pService->start();
 
-  // Initialize OTA and WiFi
-  WiFi.mode(WIFI_STA);
-  WiFi.begin("YOUR_WIFI_SSID", "YOUR_WIFI_PASSWORD"); // User should update these
-  
-  ArduinoOTA.setHostname("AquariumController");
-  ArduinoOTA.begin();
+  // WiFi.mode(WIFI_STA);
+  // WiFi.begin("YOUR_WIFI_SSID", "YOUR_WIFI_PASSWORD");
+  // ArduinoOTA.setHostname("AquariumController");
+  // ArduinoOTA.begin();
   
   bleStartTime = millis();
   
@@ -692,7 +732,7 @@ void setup() {
 
 // ================= MAIN LOOP =================
 void loop() {
-  ArduinoOTA.handle();
+  // ArduinoOTA.handle(); // Uncomment if WiFi/OTA is enabled
   
   if (bleActive && !deviceConnected && (millis() - bleStartTime > BLE_TIMEOUT)) {
     BLEDevice::deinit(true);
@@ -718,6 +758,8 @@ void loop() {
   DateTime now = rtcPresent ? rtc.now() : DateTime(2000,1,1,0,0,0);
   
   static float lastNotifiedTemp = NAN;
+  static float lastNotifiedTargetTemp = NAN; // Notify target temperature changes
+  
   if (dsPresent && safeTimeDiff(millis(), lastTempReadTime) >= TEMP_READ_INTERVAL) {
     sensors.requestTemperatures();
     currentTemp = sensors.getTempCByIndex(0);
@@ -780,6 +822,12 @@ void loop() {
       pCharQuiet->setValue(quietStatus.c_str());
       pCharQuiet->notify();
       lastQuietState = quietMode.active;
+    }
+    
+    if (isnan(lastNotifiedTargetTemp) || abs(schedule.targetTemp - lastNotifiedTargetTemp) > 0.1) {
+      pCharTargetTemp->setValue(schedule.targetTemp);
+      pCharTargetTemp->notify();
+      lastNotifiedTargetTemp = schedule.targetTemp;
     }
   }
 
@@ -1184,6 +1232,11 @@ void updateDisplay(DateTime now) {
 
   unsigned long msgDuration = feedingMessageActive ? (FEEDER_PULSE_SEC * 1000UL) : 2000;
   
+  if (feedingMessageActive && feederActive) {
+    showFeedingAnimation();
+    return;
+  }
+  
   if (statusMsg[0] != '\0' && (safeTimeDiff(millis(), msgTime) < msgDuration)) {
     display.setTextSize(1);
     int textWidth = strlen(statusMsg) * 6;
@@ -1191,32 +1244,6 @@ void updateDisplay(DateTime now) {
     int centerY = 10;
     display.setCursor(centerX, centerY);
     display.print(statusMsg);
-    
-    if (feedingMessageActive && feederActive) {
-      unsigned long elapsed = safeTimeDiff(millis(), feederStartMillis);
-      unsigned long totalDuration = FEEDER_PULSE_SEC * 1000UL;
-      
-      int remainingPercent = 100;
-      if (elapsed < totalDuration) {
-        remainingPercent = 100 - ((elapsed * 100) / totalDuration);
-      } else {
-        remainingPercent = 0;
-      }
-      remainingPercent = constrainValue(remainingPercent, 0, 100);
-      
-      int barWidth = 80;
-      int barHeight = 6;
-      int barX = (SCREEN_WIDTH - barWidth) / 2;
-      int barY = 20;
-      
-      display.drawRect(barX, barY, barWidth, barHeight, SSD1306_WHITE);
-      
-      int fillWidth = (barWidth - 2) * remainingPercent / 100;
-      if (fillWidth > 0) {
-        display.fillRect(barX + 1, barY + 1, fillWidth, barHeight - 2, SSD1306_WHITE);
-      }
-    }
-    
     display.display();
     return;
   } else if (safeTimeDiff(millis(), msgTime) >= msgDuration) {
@@ -1246,6 +1273,79 @@ void updateDisplay(DateTime now) {
 
   display.display();
 }
+
+void showFeedingAnimation() {
+  if (!oledPresent) return;
+  
+  unsigned long elapsed = safeTimeDiff(millis(), feederStartMillis);
+  unsigned long totalDuration = FEEDER_PULSE_SEC * 1000UL;
+  
+  // Animation runs for feeding duration
+  if (elapsed >= totalDuration) {
+    feedingMessageActive = false;
+    return;
+  }
+  
+  display.clearDisplay();
+  
+  // Three fish at different positions
+  struct Fish {
+    int x, y;
+    bool facingRight;
+  };
+  
+  Fish fish[3] = {
+    {20, 24, true},   // Bottom left
+    {60, 20, false},  // Middle right
+    {100, 26, false}  // Bottom right
+  };
+  
+  // Draw fish
+  for (int i = 0; i < 3; i++) {
+    int fx = fish[i].x;
+    int fy = fish[i].y;
+    
+    if (fish[i].facingRight) {
+      // Fish facing right
+      display.fillTriangle(fx, fy, fx - 6, fy - 3, fx - 6, fy + 3, SSD1306_WHITE); // tail
+      display.fillCircle(fx + 3, fy, 3, SSD1306_WHITE); // body
+      display.drawPixel(fx + 5, fy - 1, SSD1306_BLACK); // eye
+    } else {
+      // Fish facing left
+      display.fillTriangle(fx, fy, fx + 6, fy - 3, fx + 6, fy + 3, SSD1306_WHITE); // tail
+      display.fillCircle(fx - 3, fy, 3, SSD1306_WHITE); // body
+      display.drawPixel(fx - 5, fy - 1, SSD1306_BLACK); // eye
+    }
+  }
+  
+  // Food pellets falling from different positions
+  int numPellets = 8;
+  for (int i = 0; i < numPellets; i++) {
+    // Different starting X positions across the screen
+    int pelletX = 15 + i * 14;
+    // Fall at different speeds
+    int fallSpeed = 20 + (i % 3) * 5;
+    int pelletY = (elapsed / fallSpeed + i * 4) % 28;
+    
+    // Check if any fish "ate" the pellet
+    bool eaten = false;
+    for (int f = 0; f < 3; f++) {
+      if (pelletY > fish[f].y - 4 && pelletY < fish[f].y + 4 &&
+          pelletX > fish[f].x - 8 && pelletX < fish[f].x + 8) {
+        eaten = true;
+        break;
+      }
+    }
+    
+    if (!eaten) {
+      // Draw food pellet
+      display.fillCircle(pelletX, pelletY, 2, SSD1306_WHITE);
+    }
+  }
+  
+  display.display();
+}
+
 
 void displayMainScreen(DateTime now) {
   display.setCursor(LEFT_MARGIN, 0);
@@ -1758,6 +1858,10 @@ void initBLE() {
 
   pCharFeedNow = pService->createCharacteristic(CHAR_UUID_FEED_NOW, BLECharacteristic::PROPERTY_WRITE);
   pCharFeedNow->setCallbacks(new FeedNowCallbacks());
+
+  pCharTargetTemp = pService->createCharacteristic(CHAR_UUID_TARGET_TEMP, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);
+  pCharTargetTemp->setCallbacks(new TargetTempCallbacks());
+  pCharTargetTemp->addDescriptor(new BLE2902());
 
   pService->start();
 

@@ -14,6 +14,7 @@ export interface AquariumDevice {
     scheduleFilter: BluetoothRemoteGATTCharacteristic
     scheduleFeeder: BluetoothRemoteGATTCharacteristic
     feedNow: BluetoothRemoteGATTCharacteristic
+    targetTemp: BluetoothRemoteGATTCharacteristic
   }
 }
 
@@ -26,6 +27,7 @@ export interface DeviceStatus {
   servoPosition: number
   quietMode: boolean
   dateTime: string
+  targetTemp: number
 }
 
 export interface ScheduleEntry {
@@ -51,6 +53,7 @@ const CHAR_SCHEDULE_LIGHT = "beb5483e-36e1-4688-b7f5-ea07361b26b0"
 const CHAR_SCHEDULE_FILTER = "beb5483e-36e1-4688-b7f5-ea07361b26b1"
 const CHAR_SCHEDULE_FEEDER = "beb5483e-36e1-4688-b7f5-ea07361b26b2"
 const CHAR_FEED_NOW = "beb5483e-36e1-4688-b7f5-ea07361b26b3"
+const CHAR_TARGET_TEMP = "beb5483e-36e1-4688-b7f5-ea07361b26b4"
 
 export class AquariumBLE {
   private device: AquariumDevice | null = null
@@ -82,6 +85,7 @@ export class AquariumBLE {
         scheduleFilter: await service.getCharacteristic(CHAR_SCHEDULE_FILTER),
         scheduleFeeder: await service.getCharacteristic(CHAR_SCHEDULE_FEEDER),
         feedNow: await service.getCharacteristic(CHAR_FEED_NOW),
+        targetTemp: await service.getCharacteristic(CHAR_TARGET_TEMP),
       }
 
       // Setup temperature notifications
@@ -126,6 +130,11 @@ export class AquariumBLE {
         this.handleQuietModeNotification(event)
       })
 
+      await characteristics.targetTemp.startNotifications()
+      characteristics.targetTemp.addEventListener("characteristicvaluechanged", (event) => {
+        this.handleTargetTempNotification(event)
+      })
+
       this.device = { device, server, characteristics }
 
       // Read initial states
@@ -149,14 +158,21 @@ export class AquariumBLE {
       const feederValue = await this.device.characteristics.feeder.readValue()
       const servoValue = await this.device.characteristics.servo.readValue()
       const quietValue = await this.device.characteristics.quietMode.readValue()
+      const targetTempValue = await this.device.characteristics.targetTemp.readValue()
+
+      const servoDegrees = servoValue.getUint8(0)
+      const servoPercentage = Math.round((servoDegrees * 100) / 90)
+
+      const targetTemp = targetTempValue.getFloat32(0, true)
 
       this.statusCallback?.({
         lightOn: lightValue.getUint8(0) === 1,
         pumpOn: filterValue.getUint8(0) === 1,
         heaterOn: heaterValue.getUint8(0) === 1,
         feederOn: feederValue.getUint8(0) === 1,
-        servoPosition: servoValue.getUint8(0),
+        servoPosition: servoPercentage,
         quietMode: quietValue.getUint8(0) === 1,
+        targetTemp: targetTemp,
       })
     } catch (error) {
       console.error("[v0] Error reading initial states:", error)
@@ -250,6 +266,16 @@ export class AquariumBLE {
     const quietMode = quietStatus !== "0"
     console.log("[v0] Quiet mode status received:", quietMode)
     this.statusCallback?.({ quietMode })
+  }
+
+  private handleTargetTempNotification(event: Event): void {
+    const target = event.target as BluetoothRemoteGATTCharacteristic
+    const value = target.value
+    if (!value) return
+
+    const targetTemp = value.getFloat32(0, true)
+    console.log("[v0] Target temperature received:", targetTemp)
+    this.statusCallback?.({ targetTemp })
   }
 
   // Device control commands
@@ -378,6 +404,19 @@ export class AquariumBLE {
     const value = encoder.encode(timeStr)
     await this.device.characteristics.scheduleFeeder.writeValue(value)
     console.log("[v0] Feeder schedule set:", timeStr)
+  }
+
+  async setTargetTemp(temp: number): Promise<void> {
+    if (!this.device?.characteristics) throw new Error("Device not connected")
+
+    const buffer = new ArrayBuffer(4)
+    const view = new DataView(buffer)
+    view.setFloat32(0, temp, true) // true = little endian
+
+    await this.device.characteristics.targetTemp.writeValue(buffer)
+    console.log("[v0] Target temperature set to:", temp)
+
+    this.statusCallback?.({ targetTemp: temp })
   }
 
   // Legacy methods for compatibility (not used with new ESP32 code)
