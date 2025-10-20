@@ -1280,7 +1280,6 @@ void showFeedingAnimation() {
   unsigned long elapsed = safeTimeDiff(millis(), feederStartMillis);
   unsigned long totalDuration = FEEDER_PULSE_SEC * 1000UL;
   
-  // Animation runs for feeding duration
   if (elapsed >= totalDuration) {
     feedingMessageActive = false;
     return;
@@ -1288,58 +1287,78 @@ void showFeedingAnimation() {
   
   display.clearDisplay();
   
-  // Three fish at different positions
+  // Five fish at different positions with varied movement
   struct Fish {
     int x, y;
     bool facingRight;
+    int speed;
   };
   
-  Fish fish[3] = {
-    {20, 24, true},   // Bottom left
-    {60, 20, false},  // Middle right
-    {100, 26, false}  // Bottom right
+  // Animate fish positions based on time
+  int frame = (elapsed / 100) % 20;
+  
+  Fish fish[5] = {
+    {15 + (frame % 10), 24, true, 2},      // Bottom left - slow
+    {50 + (frame % 15), 18, false, 3},     // Middle - medium
+    {90 - (frame % 12), 26, false, 2},     // Bottom right - slow
+    {30 + (frame % 8), 14, true, 1},       // Top left - very slow
+    {70 - (frame % 10), 22, false, 2}      // Middle right - slow
   };
   
-  // Draw fish
-  for (int i = 0; i < 3; i++) {
+  // Draw animated fish
+  for (int i = 0; i < 5; i++) {
     int fx = fish[i].x;
     int fy = fish[i].y;
     
+    // Add swimming animation (slight vertical movement)
+    int swimOffset = (frame + i * 4) % 4 - 2;
+    fy += swimOffset;
+    
     if (fish[i].facingRight) {
-      // Fish facing right
-      display.fillTriangle(fx, fy, fx - 6, fy - 3, fx - 6, fy + 3, SSD1306_WHITE); // tail
-      display.fillCircle(fx + 3, fy, 3, SSD1306_WHITE); // body
-      display.drawPixel(fx + 5, fy - 1, SSD1306_BLACK); // eye
+      // Fish facing right with more detail
+      display.fillTriangle(fx, fy, fx - 7, fy - 3, fx - 7, fy + 3, SSD1306_WHITE); // tail
+      display.fillCircle(fx + 4, fy, 4, SSD1306_WHITE); // body
+      display.drawPixel(fx + 6, fy - 1, SSD1306_BLACK); // eye
+      display.drawPixel(fx + 2, fy, SSD1306_BLACK); // gill
     } else {
-      // Fish facing left
-      display.fillTriangle(fx, fy, fx + 6, fy - 3, fx + 6, fy + 3, SSD1306_WHITE); // tail
-      display.fillCircle(fx - 3, fy, 3, SSD1306_WHITE); // body
-      display.drawPixel(fx - 5, fy - 1, SSD1306_BLACK); // eye
+      // Fish facing left with more detail
+      display.fillTriangle(fx, fy, fx + 7, fy - 3, fx + 7, fy + 3, SSD1306_WHITE); // tail
+      display.fillCircle(fx - 4, fy, 4, SSD1306_WHITE); // body
+      display.drawPixel(fx - 6, fy - 1, SSD1306_BLACK); // eye
+      display.drawPixel(fx - 2, fy, SSD1306_BLACK); // gill
     }
   }
   
-  // Food pellets falling from different positions
-  int numPellets = 8;
+  // Food pellets falling from random positions
+  int numPellets = 12;
   for (int i = 0; i < numPellets; i++) {
     // Different starting X positions across the screen
-    int pelletX = 15 + i * 14;
-    // Fall at different speeds
-    int fallSpeed = 20 + (i % 3) * 5;
-    int pelletY = (elapsed / fallSpeed + i * 4) % 28;
+    int pelletX = 10 + i * 10 + (i % 3) * 3;
+    // Fall at different speeds with variation
+    int fallSpeed = 15 + (i % 4) * 5;
+    int pelletY = (elapsed / fallSpeed + i * 5) % 30;
     
     // Check if any fish "ate" the pellet
     bool eaten = false;
-    for (int f = 0; f < 3; f++) {
-      if (pelletY > fish[f].y - 4 && pelletY < fish[f].y + 4 &&
-          pelletX > fish[f].x - 8 && pelletX < fish[f].x + 8) {
+    for (int f = 0; f < 5; f++) {
+      int fishY = fish[f].y + ((frame + f * 4) % 4 - 2);
+      if (pelletY > fishY - 5 && pelletY < fishY + 5 &&
+          pelletX > fish[f].x - 10 && pelletX < fish[f].x + 10) {
         eaten = true;
+        // Draw small splash effect when eaten
+        if (pelletY > fishY - 3 && pelletY < fishY + 3) {
+          display.drawPixel(pelletX - 2, pelletY, SSD1306_WHITE);
+          display.drawPixel(pelletX + 2, pelletY, SSD1306_WHITE);
+          display.drawPixel(pelletX, pelletY - 2, SSD1306_WHITE);
+        }
         break;
       }
     }
     
     if (!eaten) {
-      // Draw food pellet
-      display.fillCircle(pelletX, pelletY, 2, SSD1306_WHITE);
+      // Draw food pellet with slight variation
+      int pelletSize = 2 + (i % 2);
+      display.fillCircle(pelletX, pelletY, pelletSize, SSD1306_WHITE);
     }
   }
   
@@ -1793,20 +1812,41 @@ void showBLEAnimation() {
 }
 
 void showQuietModeAnimation() {
+  if (!oledPresent) return;
+  
   display.clearDisplay();
-  for (int wave = 0; wave < 3; wave++) {
-    for (int x = 0; x < SCREEN_WIDTH; x += 4) {
-      int y = 16 + sin((x + wave * 20) * 0.1) * 8;
-      display.drawPixel(x, y, SSD1306_WHITE);
+  
+  // Draw multiple wave layers with different speeds
+  for (int layer = 0; layer < 3; layer++) {
+    for (int wave = 0; wave < 4; wave++) {
+      for (int x = 0; x < SCREEN_WIDTH; x += 2) {
+        int y = 16 + sin((x + wave * 30 + layer * 10) * 0.08) * (6 - layer * 2);
+        display.drawPixel(x, y, SSD1306_WHITE);
+        // Add thickness to waves
+        if (layer == 0) {
+          display.drawPixel(x, y + 1, SSD1306_WHITE);
+        }
+      }
+      display.display();
+      delay(150);
     }
-    display.display();
-    delay(300);
-    display.clearDisplay();
   }
-  display.setCursor(20, 12);
-  display.print(F("TRYB CICHY"));
-  display.display();
-  delay(1000);
+  
+  // Fade in text with glow effect
+  display.clearDisplay();
+  for (int i = 0; i < 3; i++) {
+    display.setCursor(15, 12);
+    display.setTextSize(1);
+    display.print(F("TRYB CICHY"));
+    display.display();
+    delay(200);
+    if (i < 2) {
+      display.clearDisplay();
+      delay(100);
+    }
+  }
+  
+  delay(800);
 }
 
 // Function to reinitialize BLE
@@ -1867,6 +1907,12 @@ void initBLE() {
 
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+}
+UUID);
   pAdvertising->setScanResponse(true);
   pAdvertising->setMinPreferred(0x06);
   pAdvertising->setMinPreferred(0x12);
