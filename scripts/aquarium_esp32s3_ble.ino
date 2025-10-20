@@ -230,7 +230,7 @@ bool feedingMessageActive = false;
 unsigned long lastTempReadTime = 0;
 const unsigned long TEMP_READ_INTERVAL = 4000;
 
-// ================= BLECALLBACKS =================
+// ================= BLE CALLBACKS =================
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
       deviceConnected = true;
@@ -704,7 +704,7 @@ void setup() {
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pAdvertising->setScanResponse(true);
   pAdvertising->setMinPreferred(0x06);
-  pAdvertising->setMinPreferred(0x12);
+  pAdvertising->setMaxPreferred(0x12); // Fixed: Changed second setMinPreferred to setMaxPreferred
   BLEDevice::startAdvertising();
 
   if (oledPresent) {
@@ -1909,12 +1909,6 @@ void initBLE() {
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pAdvertising->setScanResponse(true);
   pAdvertising->setMinPreferred(0x06);
-  pAdvertising->setMinPreferred(0x12);
-  BLEDevice::startAdvertising();
-}
-UUID);
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);
-  pAdvertising->setMinPreferred(0x12);
+  pAdvertising->setMaxPreferred(0x12); // Fixed: Changed second setMinPreferred to setMaxPreferred
   BLEDevice::startAdvertising();
 }
